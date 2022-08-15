@@ -1,24 +1,32 @@
-import { Console, time } from 'console';
-import { ArcSocketEventType, AfkStatus } from './arc';
+import { ArcSocketEventType, AfkStatus, renderPlayerAfkStatus } from './arc.js';
 
 let SOCKET_NAME = "module.afk-ready-check";
 const socket = game.socket as SocketIOClient.Socket;
 let lastMovedMouseTime = new Date();
-let afkTimeoutInMs = 1800000;
+//let afkTimeoutInMs = 1800000;
+let afkTimeoutInMs = 1800;
 
 Hooks.once('init', async function() {
     //Unused for now.
+    console.log("UAT - Initializing activity tracker...")
 });
 
 Hooks.once('ready', async function() {
     //Set up mouseEventListener here.
-    console.log("Debugger initialized for FoundryVTT User Activity Tracker (UAT)");
-    canvas.controls._onMouseMove({data: {
-        getLocalPosition() { 
-            //Mouse has moved.
-            lastMovedMouseTime = new Date(); 
-        }
-    }});
+    console.log("UAT - Ready hook received for FoundryVTT User Activity Tracker (UAT)");
+
+    //Todo: This is really ugly, I might be registering mouse listeners constantly here and that would be very bad.
+    //let mouseInterval = setInterval(() => {
+        canvas.controls._onMouseMove({data: {
+            getLocalPosition() { 
+                //Mouse has moved.
+                console.log("UAT - Mouse moved!");
+                lastMovedMouseTime = new Date(); 
+            }
+        }});
+    //}, 200);
+
+    window.addEventListener(`${canvas.controls._onMouseMove}`, onMouseMoved);
 
     //Start program loop.
     let intervalId = setInterval(() => {
@@ -31,8 +39,15 @@ Hooks.once('ready', async function() {
             //User is still active if he has moved his mouse recently.
             setPlayerStatus(false);
         }
-    }, 60000)
+    //}, 60000)
+    }, 2000)
 });
+
+function onMouseMoved(){
+    //Mouse has moved.
+    console.log("UAT - Mouse moved!");
+    lastMovedMouseTime = new Date(); 
+}
 
 function sendStatusReportSocketEvent(status: AfkStatus): void {
     const socket = game.socket as SocketIOClient.Socket;
@@ -41,11 +56,15 @@ function sendStatusReportSocketEvent(status: AfkStatus): void {
 
 function setPlayerStatus(isAfk: boolean){
     if(isAfk){
+        console.log("UAT - Set player status to AFK");
         sendStatusReportSocketEvent(AfkStatus.afk);
         game.playerStatuses.set(game.user.name, AfkStatus.afk);
+        renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
     }else{
+        console.log("UAT - Set player status to ACTIVE");
         sendStatusReportSocketEvent(AfkStatus.notAfk);
         game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
+        renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
     }
 }
 

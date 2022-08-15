@@ -40,7 +40,8 @@
     }
   ],
   "esmodules": [
-    "scripts/module.js"
+    "scripts/module.js",
+    "scripts/arc.js"
   ],
   "styles": [
     "styles/module.css"

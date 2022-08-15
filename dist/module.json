@@ -9,8 +9,9 @@
     }
   ],
   "version": "0.0.2",
-  "minimumCoreVersion": "0.6.0",
-  "compatibleCoreVersion": "0.7.2",
+  "minimumCoreVersion": "0.7.9",
+  "compatibleCoreVersion": "0.7.9",
+  "manifestPlusVersion": "1.0.0",
   "url": "",
   "manifest": "",
   "download": "",
@@ -39,7 +40,8 @@
     }
   ],
   "esmodules": [
-    "scripts/module.js"
+    "scripts/module.js",
+    "scripts/arc.js"
   ],
   "styles": [
     "styles/module.css"
