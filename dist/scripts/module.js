@@ -33,7 +33,9 @@ Hooks.once('ready', function () {
                 }
             } });
         //}, 200);
-        window.addEventListener(`${canvas.controls._onMouseMove}`, onMouseMoved);
+        //Capturing mouse moved events.
+        canvas.controls._onMouseMove = (ev) => canvas.controls._mouseMove(ev);
+        window.addEventListener("mousemove", onMouseMoved);
         //Start program loop.
         let intervalId = setInterval(() => {
             //Check if the current time is X minutes greater than the lastMovedMouseTime.

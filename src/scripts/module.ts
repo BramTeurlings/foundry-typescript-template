@@ -26,7 +26,9 @@ Hooks.once('ready', async function() {
         }});
     //}, 200);
 
-    window.addEventListener(`${canvas.controls._onMouseMove}`, onMouseMoved);
+    //Capturing mouse moved events.
+    canvas.controls._onMouseMove = (ev) => canvas.controls._mouseMove(ev);
+    window.addEventListener("mousemove", onMouseMoved);
 
     //Start program loop.
     let intervalId = setInterval(() => {
