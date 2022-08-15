@@ -12,6 +12,7 @@ Hooks.once('init', async function() {
 
 Hooks.once('ready', async function() {
     //Set up mouseEventListener here.
+    console.log("Debugger initialized for FoundryVTT User Activity Tracker (UAT)");
     canvas.controls._onMouseMove({data: {
         getLocalPosition() { 
             //Mouse has moved.

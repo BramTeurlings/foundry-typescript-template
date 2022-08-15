@@ -1,14 +1,14 @@
 {
-  "name": "foundry-typescript-template",
-  "title": "Typescript Template",
+  "name": "user-activity-tracker",
+  "title": "User Activity Tracker",
   "description": "", 
   "authors": [
     {
-      "name": "spacemandev",
-      "discord": "spacemandev#6256"
+      "name": "Bram Teurlings",
+      "discord": "Dinner | Bram#9446"
     }
   ],
-  "version": "0.0.1",
+  "version": "0.0.2",
   "minimumCoreVersion": "0.7.9",
   "compatibleCoreVersion": "0.7.9",
   "manifestPlusVersion": "1.0.0",
