@@ -38,7 +38,7 @@ Hooks.once('ready', async function() {
 
 function onMouseMoved(){
     //Mouse has moved.
-    if(mouseMoveEventSkipperCount > 5){
+    if(mouseMoveEventSkipperCount > 30){
         console.log("UAT - User mouse moved, updating last time active...");
         lastMovedMouseTime = new Date(); 
         mouseMoveEventSkipperCount = 0;
@@ -53,18 +53,16 @@ function sendStatusReportSocketEvent(status: AfkStatus): void {
 }
 
 function setPlayerStatus(isAfk: boolean){
-    let playerStatusesArray = Array.from(game.playerStatuses.values());
-    let playerStatus:Map<String, AfkStatus>  = new Map<String, AfkStatus>();
+    let playerStatusesArray = Array.from(game.playerStatuses).map(([name, status]) => {
+        return { name, status: status.toString() };
+      });
 
     if(isAfk){
-        for (let i = 0; i < playerStatusesArray.length; i+=2) {
-            playerStatus[playerStatus[i].toString()] = playerStatus[i+1]; 
-            if(playerStatus.keys[0] == game.user.name){
-                //Username is the same. Check activity status.
-                if(playerStatus.values[0] == AfkStatus.afk){
-                    //User is AFK! No need to update!
-                    return;
-                }
+        for (let i = 0; i < playerStatusesArray.length; i++) {
+            //Check username and activity status.
+            if(playerStatusesArray[i].name == game.user.name && playerStatusesArray[i].status == AfkStatus.afk.toString()){
+                //User is AFK! No need to update!
+                return;
             }
         }
 
@@ -73,14 +71,11 @@ function setPlayerStatus(isAfk: boolean){
         game.playerStatuses.set(game.user.name, AfkStatus.afk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
     }else{
-        for (let i = 0; i < playerStatusesArray.length; i+=2) {
-            playerStatus[playerStatus[i].toString()] = playerStatus[i+1]; 
-            if(playerStatus.keys[0] == game.user.name){
-                //Username is the same. Check activity status.
-                if(playerStatus.values[0] == AfkStatus.notAfk){
-                    //User is ACTIVE! No need to update!
-                    return;
-                }
+        for (let i = 0; i < playerStatusesArray.length; i++) {
+            //Check username and activity status.
+            if(playerStatusesArray[i].name == game.user.name && playerStatusesArray[i].status == AfkStatus.notAfk.toString()){
+                //User is ACTIVE! No need to update!
+                return;
             }
         }
 
@@ -89,6 +84,9 @@ function setPlayerStatus(isAfk: boolean){
         game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.notAfk);
     }
+
+    //Log the current user statuses.
+    getData();
 }
 
 function getPlayerStatus(player): any{
@@ -110,7 +108,13 @@ function checkIfAllPlayersAreAfk(): boolean{
 function getData(options = {}): any {
     let playerStatuses = Array.from(game.playerStatuses).map(([name, status]) => {
         return { name, status: status.toString() };
-      });
-    console.log("Player statuses: " + playerStatuses);
+    });
+
+    //Todo: Remove this as it takes up lots of processing and isn't needed.
+    var playerStrings: Array<string> = [];
+    for (let i = 0; i < playerStatuses.length; i++) {
+        playerStrings.push(playerStatuses[i].name + playerStatuses[i].status);
+    }
+    console.log("Player statuses: " + playerStrings);
     return playerStatuses;
   }
