@@ -12,6 +12,21 @@ Hooks.once('init', async function() {
     console.log("UAT - Initializing activity tracker...")
 });
 
+Hooks.once('canvasReady', async () => {
+    //Unused for now.
+    console.log("UAT - Setting up socket...");
+
+    //Registering our socket to broadcast activity data to HTTP clients.
+    const activityStatusSocket = game.socket as SocketIOClient.Socket;
+    activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
+        console.log("UAT - Received socket event with request name: ", request);
+        const response = getData();
+        ack(response.toString());
+        //activityStatusSocket.emit('module.user-activity-tracker', response);
+        return response;
+    });
+});
+
 Hooks.once('ready', async function() {
     //Set up mouseEventListener here.
     console.log("UAT - Ready hook received for FoundryVTT User Activity Tracker (UAT)");
