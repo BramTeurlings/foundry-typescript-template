@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "firefox",
+            "request": "launch",
+            "reAttach": true,
+            "name": "Launch Firefox against localhost",
+            "url": "http://localhost:30000",
+            "webRoot": "${workspaceFolder}",
+            "pathMappings": [
+                {
+                    "url": "http://localhost:30000/modules",
+                    "path": "c:/Users/Bram/AppData/Local/FoundryVTT/Data/modules"
+                },
+                { "url": "webpack:///node_modules/", "path": "${webRoot}/node_modules/" }
+            ]
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Chrome against localhost",
+            "url": "http://localhost:30000",
+            "webRoot": "${workspaceFolder}",
+        }
+    ]
+}

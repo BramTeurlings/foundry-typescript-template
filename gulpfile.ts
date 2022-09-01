@@ -17,7 +17,7 @@ gulp.task('copy', async () => {
     gulp.src("src/templates/**").pipe(gulp.dest('dist/templates/'))
     gulp.src("src/styles/**").pipe(gulp.dest('dist/styles/'))
     gulp.src("src/assets/**").pipe(gulp.dest('dist/assets/'))
-    resolve();
+    resolve(null);
   })
 })
 
