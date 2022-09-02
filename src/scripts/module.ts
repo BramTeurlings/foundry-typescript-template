@@ -19,11 +19,13 @@ Hooks.once('canvasReady', async () => {
     //Registering our socket to broadcast activity data to HTTP clients.
     const activityStatusSocket = game.socket as SocketIOClient.Socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
+        ack = typeof ack == "function" ? ack : () => {};
+
         console.log("UAT - Received socket event with request name: ", request);
         const response = getData();
-        ack(response.toString());
-        //activityStatusSocket.emit('module.user-activity-tracker', response);
-        return response;
+        //ack({status: "IT WORKED BITCHES!"});
+        //ack("IT WORKED BUT SIMPLER BITCHES!");
+        activityStatusSocket.emit('module.user-activity-tracker', response);
     });
 });
 
