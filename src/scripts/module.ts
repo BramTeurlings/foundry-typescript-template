@@ -1,4 +1,6 @@
 import { ArcSocketEventType, AfkStatus, renderPlayerAfkStatus } from './arc.js';
+import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
+import * as fs from 'node:fs';
 
 let SOCKET_NAME = "module.afk-ready-check";
 const socket = game.socket as SocketIOClient.Socket;
@@ -7,31 +9,62 @@ let lastMovedMouseTime = new Date();
 let afkTimeoutInMs = 1800;
 let mouseMoveEventSkipperCount = 0;
 
+//Todo: This name is hard-coded because we only want to use one specific file. Save this in a nice location and make it consistent with userStatusExporter.ts
+let activityLogFileName = "0_UserActivityLog.json";
+let activityLogBaseFileName = "UserActivityLog";
+let activityLogId = 0;
+
 Hooks.once('init', async function() {
     //Unused for now.
     console.log("UAT - Initializing activity tracker...")
 });
 
 Hooks.once('canvasReady', async () => {
-    //Unused for now.
     console.log("UAT - Setting up socket...");
 
+    //Try to create a user status entry:
+    //Todo: This could either return an error or overwrite the last log since we are not generating a unique entry here. Verify which one.
+    //DFChatArchive.createChatArchive(activityLogBaseFileName, getData(), false);
+
     //Registering our socket to broadcast activity data to HTTP clients.
+    const activityStatusReplySocket = game.socket as SocketIOClient.Socket;
     const activityStatusSocket = game.socket as SocketIOClient.Socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
-        ack = typeof ack == "function" ? ack : () => {};
+        //ack = typeof ack == "function" ? ack : () => {};
 
         console.log("UAT - Received socket event with request name: ", request);
-        const response = getData();
-        //ack({status: "IT WORKED BITCHES!"});
-        //ack("IT WORKED BUT SIMPLER BITCHES!");
-        activityStatusSocket.emit('module.user-activity-tracker', response);
+        //Todo: Log data to file here:
+        writeUserActivityToFile(JSON.stringify(getData()));
+        // let playerStatuses = getData();
+        // fetch('modules/user-activity-tracker/UserActivity.txt', {
+        //     method: 'POST', // or 'PUT'
+        //     headers: {
+        //         // 'Content-Type': 'application/json',
+        //     },
+        //     body: JSON.stringify(playerStatuses),
+        // })
+        // .then((response) => response.json())
+        // .then((data) => {
+        //     console.log("UAT - Wrote user activity data to UserActivity.txt!", data);
+        // })
+        // .catch((error) => {
+        //     console.error(console.error("UAT - An error has occurred while attempting user activity data to file: " + error));
+        // });
+
+        // const response = getData();
+        //ack({status: "test response"});
+        // activityStatusReplySocket.emit('module.user-activity-tracker-reply', response, response, (response) => {
+        //     console.log("Reply has been received!");
+        // });
+        // console.log("Emitted reply on socket!");
     });
 });
 
 Hooks.once('ready', async function() {
     //Set up mouseEventListener here.
     console.log("UAT - Ready hook received for FoundryVTT User Activity Tracker (UAT)");
+
+    saveDataToFile(JSON.stringify(getData()), "json", "userStatuses.json");
 
     //Todo: Maybe somehow listen or act on fewer of these, right now we're getting these events at a rapid rate.
     //Capturing mouse moved events.
@@ -52,6 +85,22 @@ Hooks.once('ready', async function() {
     //}, 60000)
     }, 2000)
 });
+
+function writeUserActivityToFile(userData: string) {
+    let entry = new DFChatArchiveEntry();
+    entry.id = activityLogId;
+    entry.filename = activityLogFileName;
+
+    //This should update our archive entry.
+    //DFChatArchive.updateChatArchive(entry, getData());
+
+    // fs.writeFile('UserActivity.txt', userData,  function(err) {
+    //     if (err) {
+    //         return console.error("UAT - An error has occurred while attempting user activity data to file: " + err);
+    //     }
+    //     console.log("UAT - Wrote user activity data to UserActivity.txt!");
+    // });
+}
 
 function onMouseMoved(){
     //Mouse has moved.

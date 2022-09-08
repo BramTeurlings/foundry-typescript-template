@@ -43,6 +43,7 @@
     "scripts/module.js",
     "scripts/arc.js"
   ],
+  "socket": true,
   "styles": [
     "styles/module.css"
   ],
