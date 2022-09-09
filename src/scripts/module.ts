@@ -4,8 +4,8 @@ import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
 let SOCKET_NAME = "module.afk-ready-check";
 const socket = game.socket as SocketIOClient.Socket;
 let lastMovedMouseTime = new Date();
-// let afkTimeoutInMs = 1800000;
-let afkTimeoutInMs = 2000;
+let afkTimeoutInMs = 1800000;
+// let afkTimeoutInMs = 2000;
 let updatingJSON = 0;
 let mouseMoveEventSkipperCount = 0;
 
@@ -40,6 +40,17 @@ Hooks.once('ready', async function() {
 
     //Start program loop.
     let intervalId = setInterval(() => {
+        //Todo: This doesn't work 100% of the time, we should listen for when the app has dispatched the notifications somehow and suppress those specifically.
+        //Ensure the notification queue is cleared only after the JSON file has been updated.
+        if(updatingJSON > 0){
+            //Ensure the missed notifications are not shown after the fact:
+            $('#notifications').empty();
+            updatingJSON = 0;
+        }
+
+        //Ensure the notification state is nominal here.
+        $('#notifications').show();
+
         //Todo: Make this AFK time a user setting.
         //Check if the current time is X minutes greater than the lastMovedMouseTime.
         let currentTime = new Date();
@@ -50,8 +61,7 @@ Hooks.once('ready', async function() {
             //User is still active if he has moved his mouse recently.
             setPlayerStatus(false);
         }
-    // }, 60000)
-    }, 2000)
+    }, 60000)
 });
 
 function sleep(ms) {
@@ -65,30 +75,13 @@ function writeUserActivityToFile(userData: any) {
     entry.id = activityLogId;
     entry.filename = activityLogFileName;
 
-    updatingJSON++;
-
     //Supress notifications:
     $('#notifications').hide();
+    updatingJSON = 1;
 
     //This updates our archive entry but it shows a notification to all users that a file has been written to the drive.
     //Todo: This could overwrites the last log since we are not generating a unique entry here. It also creates a new log if it doesn't yet exist.
     DFChatArchive.updateChatArchive(entry, userData);
-
-    //Supress notifications:
-    $('#notifications').hide();
-
-    //Sleep to ensure the file is written before we unhide notifications, this is fine since Foundry is multithreaded.
-    sleep(500);
-
-    //Ensure the missed notifications are not shown after the fact:
-    $('#notifications').empty();
-
-    updatingJSON--;
-
-    if(updatingJSON <= 0){
-        //Unhide notifications.
-        $('#notifications').show();
-    }
 }
 
 function onMouseMoved(){

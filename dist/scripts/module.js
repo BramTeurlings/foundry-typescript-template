@@ -12,10 +12,12 @@ import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
 let SOCKET_NAME = "module.afk-ready-check";
 const socket = game.socket;
 let lastMovedMouseTime = new Date();
-let afkTimeoutInMs = 1800000;
+// let afkTimeoutInMs = 1800000;
+let afkTimeoutInMs = 2000;
+let updatingJSON = 0;
 let mouseMoveEventSkipperCount = 0;
 //Todo: This name is hard-coded because we only want to use one specific file. Save this in a nice location and make it consistent with userStatusExporter.ts
-let activityLogFileName = "0_UserActivityLog.json";
+let activityLogFileName = "UserActivityLog.json";
 let activityLogId = 0;
 Hooks.once('init', function () {
     return __awaiter(this, void 0, void 0, function* () {
@@ -30,13 +32,7 @@ Hooks.once('canvasReady', () => __awaiter(void 0, void 0, void 0, function* () {
     const activityStatusSocket = game.socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
         console.log("UAT - Received socket event with request name: ", request);
-        //Writes user status data to a JSON file on host.
-        let gameStatus = getData();
-        gameStatus.unshift({ name: "world name", status: game.world.data.title.toString() });
-        writeUserActivityToFile(gameStatus);
-        //Todo: We don't want this unless we can track which user has sent the request.
-        //This downloads the file on clients
-        //saveDataToFile(JSON.stringify(getData()), "json", "userStatuses.json");
+        updateUserStatusJson();
     });
 }));
 Hooks.once('ready', function () {
@@ -48,6 +44,14 @@ Hooks.once('ready', function () {
         window.addEventListener("mousemove", onMouseMoved);
         //Start program loop.
         let intervalId = setInterval(() => {
+            //Ensure the notification queue is cleared only after the JSON file has been updated
+            if (updatingJSON > 0) {
+                //Ensure the missed notifications are not shown after the fact:
+                $('#notifications').empty();
+                updatingJSON = 0;
+            }
+            //Ensure the notification state is nominal here.
+            $('#notifications').show();
             //Todo: Make this AFK time a user setting.
             //Check if the current time is X minutes greater than the lastMovedMouseTime.
             let currentTime = new Date();
@@ -59,27 +63,28 @@ Hooks.once('ready', function () {
                 //User is still active if he has moved his mouse recently.
                 setPlayerStatus(false);
             }
-        }, 60000);
+            // }, 60000)
+        }, 4000);
     });
 });
+function sleep(ms) {
+    var start = new Date().getTime(), expire = start + ms;
+    while (new Date().getTime() < expire) { }
+    return;
+}
 function writeUserActivityToFile(userData) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let entry = new DFChatArchiveEntry();
-        entry.id = activityLogId;
-        entry.filename = activityLogFileName;
-        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        //Supress notifications:
-        $('#notifications').hide();
-        //This updates our archive entry but it shows a notification to all users that a file has been written to the drive.
-        //Todo: This could overwrites the last log since we are not generating a unique entry here. It also creates a new log if it doesn't yet exist.
-        DFChatArchive.updateChatArchive(entry, userData);
-        //Sleep to ensure the file is written before we unhide notifications, this is fine since Foundry is multithreaded.
-        yield sleep(100);
-        //Ensure the missed notifications are not shown after the fact:
-        $('#notifications').empty();
-        //Unhide notifications.
-        $('#notifications').show();
-    });
+    let entry = new DFChatArchiveEntry();
+    entry.id = activityLogId;
+    entry.filename = activityLogFileName;
+    //Supress notifications:
+    $('#notifications').hide();
+    updatingJSON = 1;
+    //This updates our archive entry but it shows a notification to all users that a file has been written to the drive.
+    //Todo: This could overwrites the last log since we are not generating a unique entry here. It also creates a new log if it doesn't yet exist.
+    DFChatArchive.updateChatArchive(entry, userData);
+    //This doesn't work, we need to listen for when the app has dispatched the notifications somehow.
+    //Sleep to ensure the file is written before we unhide notifications, this is fine since Foundry is multithreaded.
+    //sleep(2000);
 }
 function onMouseMoved() {
     //Mouse has moved.
@@ -109,6 +114,7 @@ function setPlayerStatus(isAfk) {
             }
         }
         console.log("UAT - Set player status to AFK");
+        //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.afk);
         game.playerStatuses.set(game.user.name, AfkStatus.afk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
@@ -122,12 +128,15 @@ function setPlayerStatus(isAfk) {
             }
         }
         console.log("UAT - Set player status to ACTIVE");
+        //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.notAfk);
         game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.notAfk);
     }
     //Log the current user statuses.
     getData();
+    //Update the JSON
+    updateUserStatusJson();
 }
 //Todo: A function that checks if all player statuses are set to AFK, and then shuts down the server.
 //Todo: Make this in Python through HTTP api, or log this to the debug.log somehow.
@@ -151,4 +160,15 @@ function getData(options = {}) {
     }
     console.log("Player statuses: " + playerStrings);
     return playerStatuses;
+}
+function updateUserStatusJson() {
+    return __awaiter(this, void 0, void 0, function* () {
+        //Writes user status data to a JSON file on host.
+        let gameStatus = getData();
+        gameStatus.unshift({ name: "world name", status: game.world.data.title.toString() });
+        writeUserActivityToFile(gameStatus);
+        //Todo: We don't want this unless we can track which user has sent the request.
+        //This downloads the file on clients
+        //saveDataToFile(JSON.stringify(getData()), "json", "userStatuses.json");
+    });
 }
