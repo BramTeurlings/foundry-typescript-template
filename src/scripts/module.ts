@@ -1,17 +1,14 @@
 import { ArcSocketEventType, AfkStatus, renderPlayerAfkStatus } from './arc.js';
 import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
-import * as fs from 'node:fs';
 
 let SOCKET_NAME = "module.afk-ready-check";
 const socket = game.socket as SocketIOClient.Socket;
 let lastMovedMouseTime = new Date();
-//let afkTimeoutInMs = 1800000;
-let afkTimeoutInMs = 1800;
+let afkTimeoutInMs = 1800000;
 let mouseMoveEventSkipperCount = 0;
 
 //Todo: This name is hard-coded because we only want to use one specific file. Save this in a nice location and make it consistent with userStatusExporter.ts
-let activityLogFileName = "0_UserActivityLog.json";
-let activityLogBaseFileName = "UserActivityLog";
+let activityLogFileName = "UserActivityLog.json";
 let activityLogId = 0;
 
 Hooks.once('init', async function() {
@@ -22,41 +19,20 @@ Hooks.once('init', async function() {
 Hooks.once('canvasReady', async () => {
     console.log("UAT - Setting up socket...");
 
-    //Try to create a user status entry:
-    //Todo: This could either return an error or overwrite the last log since we are not generating a unique entry here. Verify which one.
-    //DFChatArchive.createChatArchive(activityLogBaseFileName, getData(), false);
-
     //Registering our socket to broadcast activity data to HTTP clients.
     const activityStatusReplySocket = game.socket as SocketIOClient.Socket;
     const activityStatusSocket = game.socket as SocketIOClient.Socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
-        //ack = typeof ack == "function" ? ack : () => {};
-
         console.log("UAT - Received socket event with request name: ", request);
-        //Todo: Log data to file here:
-        writeUserActivityToFile(JSON.stringify(getData()));
-        // let playerStatuses = getData();
-        // fetch('modules/user-activity-tracker/UserActivity.txt', {
-        //     method: 'POST', // or 'PUT'
-        //     headers: {
-        //         // 'Content-Type': 'application/json',
-        //     },
-        //     body: JSON.stringify(playerStatuses),
-        // })
-        // .then((response) => response.json())
-        // .then((data) => {
-        //     console.log("UAT - Wrote user activity data to UserActivity.txt!", data);
-        // })
-        // .catch((error) => {
-        //     console.error(console.error("UAT - An error has occurred while attempting user activity data to file: " + error));
-        // });
 
-        // const response = getData();
-        //ack({status: "test response"});
-        // activityStatusReplySocket.emit('module.user-activity-tracker-reply', response, response, (response) => {
-        //     console.log("Reply has been received!");
-        // });
-        // console.log("Emitted reply on socket!");
+        //Writes user status data to a JSON file on host.
+        let gameStatus = getData();
+        gameStatus.unshift({ name: "world name", status: game.world.data.title.toString() })
+        writeUserActivityToFile(gameStatus);
+
+        //Todo: We don't want this unless we can track which user has sent the request.
+        //This downloads the file on clients
+        //saveDataToFile(JSON.stringify(getData()), "json", "userStatuses.json");
     });
 });
 
@@ -64,15 +40,13 @@ Hooks.once('ready', async function() {
     //Set up mouseEventListener here.
     console.log("UAT - Ready hook received for FoundryVTT User Activity Tracker (UAT)");
 
-    saveDataToFile(JSON.stringify(getData()), "json", "userStatuses.json");
-
     //Todo: Maybe somehow listen or act on fewer of these, right now we're getting these events at a rapid rate.
     //Capturing mouse moved events.
-    //canvas.controls._onMouseMove = (ev) => canvas.controls._mouseMove(ev);
     window.addEventListener("mousemove", onMouseMoved);
 
     //Start program loop.
     let intervalId = setInterval(() => {
+        //Todo: Make this AFK time a user setting.
         //Check if the current time is X minutes greater than the lastMovedMouseTime.
         let currentTime = new Date();
         if(currentTime.getTime() > (lastMovedMouseTime.getTime() + afkTimeoutInMs)){
@@ -82,24 +56,30 @@ Hooks.once('ready', async function() {
             //User is still active if he has moved his mouse recently.
             setPlayerStatus(false);
         }
-    //}, 60000)
-    }, 2000)
+    }, 60000)
 });
 
-function writeUserActivityToFile(userData: string) {
+async function writeUserActivityToFile(userData: any) {
     let entry = new DFChatArchiveEntry();
     entry.id = activityLogId;
     entry.filename = activityLogFileName;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    //This should update our archive entry.
-    //DFChatArchive.updateChatArchive(entry, getData());
+    //Supress notifications:
+    $('#notifications').hide();
 
-    // fs.writeFile('UserActivity.txt', userData,  function(err) {
-    //     if (err) {
-    //         return console.error("UAT - An error has occurred while attempting user activity data to file: " + err);
-    //     }
-    //     console.log("UAT - Wrote user activity data to UserActivity.txt!");
-    // });
+    //This updates our archive entry but it shows a notification to all users that a file has been written to the drive.
+    //Todo: This could overwrites the last log since we are not generating a unique entry here. It also creates a new log if it doesn't yet exist.
+    DFChatArchive.updateChatArchive(entry, userData);
+
+    //Sleep to ensure the file is written before we unhide notifications, this is fine since Foundry is multithreaded.
+    await sleep(100);
+
+    //Ensure the missed notifications are not shown after the fact:
+    $('#notifications').empty();
+
+    //Unhide notifications.
+    $('#notifications').show();
 }
 
 function onMouseMoved(){
@@ -153,10 +133,6 @@ function setPlayerStatus(isAfk: boolean){
 
     //Log the current user statuses.
     getData();
-}
-
-function getPlayerStatus(player): any{
-    
 }
 
 //Todo: A function that checks if all player statuses are set to AFK, and then shuts down the server.
