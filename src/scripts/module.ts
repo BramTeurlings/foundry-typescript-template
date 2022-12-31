@@ -117,7 +117,7 @@ function setPlayerStatus(isAfk: boolean){
         console.log("UAT - Set player status to AFK");
         //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.afk);
-        game.playerStatuses.set(game.user.name, AfkStatus.afk);
+        game.playerStatuses.set(game.user.name, AfkStatus.afk, lastMovedMouseTime);
         renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
     }else{
         for (let i = 0; i < playerStatusesArray.length; i++) {
@@ -131,7 +131,7 @@ function setPlayerStatus(isAfk: boolean){
         console.log("UAT - Set player status to ACTIVE");
         //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.notAfk);
-        game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
+        game.playerStatuses.set(game.user.name, AfkStatus.notAfk, lastMovedMouseTime);
         renderPlayerAfkStatus(game.user.name, AfkStatus.notAfk);
     }
 
@@ -154,14 +154,14 @@ function checkIfAllPlayersAreAfk(): boolean{
 }
 
 function getData(options = {}): any {
-    let playerStatuses = Array.from(game.playerStatuses).map(([name, status]) => {
-        return { name, status: status.toString() };
+    let playerStatuses = Array.from(game.playerStatuses).map(([name, status, timestamp]) => {
+        return { name, status: status.toString(), timestamp: timestamp };
     });
 
     //Todo: Remove this as it takes up lots of processing and isn't needed.
     var playerStrings: Array<string> = [];
     for (let i = 0; i < playerStatuses.length; i++) {
-        playerStrings.push(playerStatuses[i].name + playerStatuses[i].status);
+        playerStrings.push(playerStatuses[i].name + playerStatuses[i].status + playerStatuses[i].timestamp);
     }
     console.log("Player statuses: " + playerStrings);
     return playerStatuses;
