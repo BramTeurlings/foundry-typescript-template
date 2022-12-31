@@ -1,7 +1,9 @@
 import { ArcSocketEventType, AfkStatus, renderPlayerAfkStatus } from './arc.js';
 import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
 
-let SOCKET_NAME = "module.afk-ready-check";
+let AFK_READY_CHECK_SOCKET_NAME = "module.afk-ready-check";
+let STATUS_SOCKET_NAME = "module.user-activity-tracker-status";
+let TIMESTAMP_SOCKET_NAME = "module.user-activity-tracker-timestamp";
 const socket = game.socket as SocketIOClient.Socket;
 let lastMovedMouseTime = new Date();
 let afkTimeoutInMs = 1800000;
@@ -22,12 +24,27 @@ Hooks.once('canvasReady', async () => {
     console.log("UAT - Setting up socket...");
 
     //Registering our socket to broadcast activity data to HTTP clients.
-    const activityStatusReplySocket = game.socket as SocketIOClient.Socket;
     const activityStatusSocket = game.socket as SocketIOClient.Socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
         console.log("UAT - Received socket event with request name: ", request);
         updateUserStatusJson();
     });
+    activityStatusSocket.on(STATUS_SOCKET_NAME, (request, ack) => {
+        const name = request.data.name;
+        const status = request.data.status;
+        game.playerStatuses.set(name, status);
+    });
+    activityStatusSocket.on(TIMESTAMP_SOCKET_NAME, (request, ack) => {
+        const name = request.data.name;
+        const timestamp = request.data.timestamp;
+        game.playerTimestamps.set(name, timestamp);
+    });
+
+    console.log("UAT - Populating game user data...");
+    initializeAllUserGameData();
+    game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
+    game.playerTimestamps.set(game.user.name, new Date());
+    updateUserStatusJson();
 });
 
 Hooks.once('ready', async function() {
@@ -61,8 +78,23 @@ Hooks.once('ready', async function() {
             //User is still active if he has moved his mouse recently.
             setPlayerStatus(false);
         }
-    }, 60000)
+
+        //Todo: Update last moved mouse time:
+        setplayerTimestamp(lastMovedMouseTime);
+
+        //Update the JSON
+        updateUserStatusJson();
+    }, 30000)
 });
+
+function initializeAllUserGameData() {
+    if (!game.playerStatuses) {
+        game.playerStatuses = new Map<string, AfkStatus>();
+    }
+    if (!game.playerTimestamps) {
+        game.playerTimestamps = new Map<string, Date>();
+    }
+}
 
 function sleep(ms) {
     var start = new Date().getTime(), expire = start + ms;
@@ -97,7 +129,13 @@ function onMouseMoved(){
 
 function sendStatusReportSocketEvent(status: AfkStatus): void {
     const socket = game.socket as SocketIOClient.Socket;
-    socket.emit(SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+    socket.emit(AFK_READY_CHECK_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+    socket.emit(STATUS_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+}
+
+function sendTimestampReportSocketEvent(timestamp: Date): void {
+    const socket = game.socket as SocketIOClient.Socket;
+    socket.emit(TIMESTAMP_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, timestamp: timestamp } });
 }
 
 function setPlayerStatus(isAfk: boolean){
@@ -117,7 +155,7 @@ function setPlayerStatus(isAfk: boolean){
         console.log("UAT - Set player status to AFK");
         //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.afk);
-        game.playerStatuses.set(game.user.name, AfkStatus.afk, lastMovedMouseTime);
+        game.playerStatuses.set(game.user.name, AfkStatus.afk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.afk);
     }else{
         for (let i = 0; i < playerStatusesArray.length; i++) {
@@ -131,20 +169,24 @@ function setPlayerStatus(isAfk: boolean){
         console.log("UAT - Set player status to ACTIVE");
         //Notify AFK status UI
         sendStatusReportSocketEvent(AfkStatus.notAfk);
-        game.playerStatuses.set(game.user.name, AfkStatus.notAfk, lastMovedMouseTime);
+        game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
         renderPlayerAfkStatus(game.user.name, AfkStatus.notAfk);
     }
 
     //Log the current user statuses.
-    getData();
-    //Update the JSON
-    updateUserStatusJson();
+    logUserData();
+}
+
+function setplayerTimestamp(timestamp: Date) {
+    //Update the timestamp for the currently logged in user.
+    game.playerTimestamps.set(game.user.name, timestamp);
+    sendTimestampReportSocketEvent(timestamp);
 }
 
 //Todo: A function that checks if all player statuses are set to AFK, and then shuts down the server.
 //Todo: Make this in Python through HTTP api, or log this to the debug.log somehow.
 function checkIfAllPlayersAreAfk(): boolean{
-    let playerStatuses = getData();
+    let playerStatuses = getUserStatus();
     playerStatuses.forEach(element => {
         if(element === "notAfk"){
             return false;
@@ -153,23 +195,59 @@ function checkIfAllPlayersAreAfk(): boolean{
     return true;
 }
 
-function getData(options = {}): any {
-    let playerStatuses = Array.from(game.playerStatuses).map(([name, status, timestamp]) => {
-        return { name, status: status.toString(), timestamp: timestamp };
+function getUserStatus(options = {}): any {
+    let playerStatuses = Array.from(game.playerStatuses).map(([name, status]) => {
+        return { name, status: status.toString() };
     });
+
+    return playerStatuses;
+}
+
+function getUserTimestamp(options = {}): any {
+    let playerStatuses = Array.from(game.playerTimestamps).map(([name, timestamp]) => {
+        return { name, timestamp: timestamp };
+    });
+
+    return playerStatuses;
+}
+
+function getCombinedUserData(options = {}): any {
+    type UserData = { status: string; timestamp: Date };
+    let statuses = getUserStatus();
+    let timestamps = getUserTimestamp();
+    let combined : Map<string, UserData> = new Map<string, UserData>();
+
+    for(let statusIndex = 0; statusIndex < statuses.length; statusIndex++){
+        for(let timestampIndex = 0; timestampIndex < timestamps.length; timestampIndex++){
+            if(statuses[statusIndex].name == timestamps[timestampIndex].name) {
+                //Names match, append data to new map.
+                combined.set(statuses[statusIndex].name, {status: statuses[statusIndex].status, timestamp: timestamps[timestampIndex].timestamp});
+            }
+        }
+    }
+
+    let result = Array.from(combined).map(([name, data]) => {
+        return {name, status: data.status, timestamp: data.timestamp}
+    });
+
+    return result;
+}
+
+function logUserData() {
+    let playerStatuses = getUserStatus();
 
     //Todo: Remove this as it takes up lots of processing and isn't needed.
     var playerStrings: Array<string> = [];
     for (let i = 0; i < playerStatuses.length; i++) {
-        playerStrings.push(playerStatuses[i].name + playerStatuses[i].status + playerStatuses[i].timestamp);
+        playerStrings.push(playerStatuses[i].name + playerStatuses[i].status);
     }
+
     console.log("Player statuses: " + playerStrings);
-    return playerStatuses;
 }
 
 async function updateUserStatusJson(){
     //Writes user status data to a JSON file on host.
-    let gameStatus = getData();
+    let gameStatus = getCombinedUserData();
     gameStatus.unshift({ name: "world name", status: game.world.data.title.toString() })
     writeUserActivityToFile(gameStatus);
 

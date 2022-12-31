@@ -9,11 +9,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 import { ArcSocketEventType, AfkStatus, renderPlayerAfkStatus } from './arc.js';
 import { DFChatArchive, DFChatArchiveEntry } from './userStatusExporter.js';
-let SOCKET_NAME = "module.afk-ready-check";
+let AFK_READY_CHECK_SOCKET_NAME = "module.afk-ready-check";
+let STATUS_SOCKET_NAME = "module.user-activity-tracker-status";
+let TIMESTAMP_SOCKET_NAME = "module.user-activity-tracker-timestamp";
 const socket = game.socket;
 let lastMovedMouseTime = new Date();
-// let afkTimeoutInMs = 1800000;
-let afkTimeoutInMs = 2000;
+let afkTimeoutInMs = 1800000;
+// let afkTimeoutInMs = 2000;
 let updatingJSON = 0;
 let mouseMoveEventSkipperCount = 0;
 //Todo: This name is hard-coded because we only want to use one specific file. Save this in a nice location and make it consistent with userStatusExporter.ts
@@ -28,12 +30,26 @@ Hooks.once('init', function () {
 Hooks.once('canvasReady', () => __awaiter(void 0, void 0, void 0, function* () {
     console.log("UAT - Setting up socket...");
     //Registering our socket to broadcast activity data to HTTP clients.
-    const activityStatusReplySocket = game.socket;
     const activityStatusSocket = game.socket;
     activityStatusSocket.on('module.user-activity-tracker', (request, ack) => {
         console.log("UAT - Received socket event with request name: ", request);
         updateUserStatusJson();
     });
+    activityStatusSocket.on(STATUS_SOCKET_NAME, (request, ack) => {
+        const name = request.data.name;
+        const status = request.data.status;
+        game.playerStatuses.set(name, status);
+    });
+    activityStatusSocket.on(TIMESTAMP_SOCKET_NAME, (request, ack) => {
+        const name = request.data.name;
+        const timestamp = request.data.timestamp;
+        game.playerTimestamps.set(name, timestamp);
+    });
+    console.log("UAT - Populating game user data...");
+    initializeAllUserGameData();
+    game.playerStatuses.set(game.user.name, AfkStatus.notAfk);
+    game.playerTimestamps.set(game.user.name, new Date());
+    updateUserStatusJson();
 }));
 Hooks.once('ready', function () {
     return __awaiter(this, void 0, void 0, function* () {
@@ -44,7 +60,8 @@ Hooks.once('ready', function () {
         window.addEventListener("mousemove", onMouseMoved);
         //Start program loop.
         let intervalId = setInterval(() => {
-            //Ensure the notification queue is cleared only after the JSON file has been updated
+            //Todo: This doesn't work 100% of the time, we should listen for when the app has dispatched the notifications somehow and suppress those specifically.
+            //Ensure the notification queue is cleared only after the JSON file has been updated.
             if (updatingJSON > 0) {
                 //Ensure the missed notifications are not shown after the fact:
                 $('#notifications').empty();
@@ -63,10 +80,21 @@ Hooks.once('ready', function () {
                 //User is still active if he has moved his mouse recently.
                 setPlayerStatus(false);
             }
-            // }, 60000)
-        }, 4000);
+            //Todo: Update last moved mouse time:
+            setplayerTimestamp(lastMovedMouseTime);
+            //Update the JSON
+            updateUserStatusJson();
+        }, 30000);
     });
 });
+function initializeAllUserGameData() {
+    if (!game.playerStatuses) {
+        game.playerStatuses = new Map();
+    }
+    if (!game.playerTimestamps) {
+        game.playerTimestamps = new Map();
+    }
+}
 function sleep(ms) {
     var start = new Date().getTime(), expire = start + ms;
     while (new Date().getTime() < expire) { }
@@ -82,9 +110,6 @@ function writeUserActivityToFile(userData) {
     //This updates our archive entry but it shows a notification to all users that a file has been written to the drive.
     //Todo: This could overwrites the last log since we are not generating a unique entry here. It also creates a new log if it doesn't yet exist.
     DFChatArchive.updateChatArchive(entry, userData);
-    //This doesn't work, we need to listen for when the app has dispatched the notifications somehow.
-    //Sleep to ensure the file is written before we unhide notifications, this is fine since Foundry is multithreaded.
-    //sleep(2000);
 }
 function onMouseMoved() {
     //Mouse has moved.
@@ -99,7 +124,12 @@ function onMouseMoved() {
 }
 function sendStatusReportSocketEvent(status) {
     const socket = game.socket;
-    socket.emit(SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+    socket.emit(AFK_READY_CHECK_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+    socket.emit(STATUS_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, status: status } });
+}
+function sendTimestampReportSocketEvent(timestamp) {
+    const socket = game.socket;
+    socket.emit(TIMESTAMP_SOCKET_NAME, { type: ArcSocketEventType.statusReport, data: { name: game.user.name, timestamp: timestamp } });
 }
 function setPlayerStatus(isAfk) {
     let playerStatusesArray = Array.from(game.playerStatuses).map(([name, status]) => {
@@ -134,14 +164,17 @@ function setPlayerStatus(isAfk) {
         renderPlayerAfkStatus(game.user.name, AfkStatus.notAfk);
     }
     //Log the current user statuses.
-    getData();
-    //Update the JSON
-    updateUserStatusJson();
+    logUserData();
+}
+function setplayerTimestamp(timestamp) {
+    //Update the timestamp for the currently logged in user.
+    game.playerTimestamps.set(game.user.name, timestamp);
+    sendTimestampReportSocketEvent(timestamp);
 }
 //Todo: A function that checks if all player statuses are set to AFK, and then shuts down the server.
 //Todo: Make this in Python through HTTP api, or log this to the debug.log somehow.
 function checkIfAllPlayersAreAfk() {
-    let playerStatuses = getData();
+    let playerStatuses = getUserStatus();
     playerStatuses.forEach(element => {
         if (element === "notAfk") {
             return false;
@@ -149,22 +182,48 @@ function checkIfAllPlayersAreAfk() {
     });
     return true;
 }
-function getData(options = {}) {
+function getUserStatus(options = {}) {
     let playerStatuses = Array.from(game.playerStatuses).map(([name, status]) => {
         return { name, status: status.toString() };
     });
+    return playerStatuses;
+}
+function getUserTimestamp(options = {}) {
+    let playerStatuses = Array.from(game.playerTimestamps).map(([name, timestamp]) => {
+        return { name, timestamp: timestamp };
+    });
+    return playerStatuses;
+}
+function getCombinedUserData(options = {}) {
+    let statuses = getUserStatus();
+    let timestamps = getUserTimestamp();
+    let combined = new Map();
+    for (let statusIndex = 0; statusIndex < statuses.length; statusIndex++) {
+        for (let timestampIndex = 0; timestampIndex < timestamps.length; timestampIndex++) {
+            if (statuses[statusIndex].name == timestamps[timestampIndex].name) {
+                //Names match, append data to new map.
+                combined.set(statuses[statusIndex].name, { status: statuses[statusIndex].status, timestamp: timestamps[timestampIndex].timestamp });
+            }
+        }
+    }
+    let result = Array.from(combined).map(([name, data]) => {
+        return { name, status: data.status, timestamp: data.timestamp };
+    });
+    return result;
+}
+function logUserData() {
+    let playerStatuses = getUserStatus();
     //Todo: Remove this as it takes up lots of processing and isn't needed.
     var playerStrings = [];
     for (let i = 0; i < playerStatuses.length; i++) {
         playerStrings.push(playerStatuses[i].name + playerStatuses[i].status);
     }
     console.log("Player statuses: " + playerStrings);
-    return playerStatuses;
 }
 function updateUserStatusJson() {
     return __awaiter(this, void 0, void 0, function* () {
         //Writes user status data to a JSON file on host.
-        let gameStatus = getData();
+        let gameStatus = getCombinedUserData();
         gameStatus.unshift({ name: "world name", status: game.world.data.title.toString() });
         writeUserActivityToFile(gameStatus);
         //Todo: We don't want this unless we can track which user has sent the request.
